@@ -1,27 +1,34 @@
 document.addEventListener('DOMContentLoaded', function () {
+    // Get DOM elements
     const dropArea = document.getElementById('dropArea');
     const fileInput = document.getElementById('fileInput');
     const convertBtn = document.getElementById('convertBtn');
     const downloadBtn = document.getElementById('downloadBtn');
     const thresholdSlider = document.getElementById('threshold');
     const thresholdValue = document.getElementById('thresholdValue');
-    const previewSection = document.querySelector('.preview-section');
     const originalPreview = document.getElementById('originalPreview');
     const vectorPreview = document.getElementById('vectorPreview');
+    const previewSection = document.querySelector('.preview-section');
     const processingOverlay = document.getElementById('processingOverlay');
 
+    // Variables to store current state
     let currentFile = null;
     let vectorOutput = null;
 
-    // Check if Potrace is available
+    // Check if required libraries are loaded
     if (typeof Potrace === 'undefined') {
-        alert('Error: Potrace library is not loaded. Please make sure you have included the Potrace script in your HTML.');
-        convertBtn.disabled = true;
+        console.error('Potrace library is not loaded');
+        alert('Error: Potrace library is missing. Please include it in your HTML.');
     }
 
-    // Drag and drop functionality
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropArea.addEventListener(eventName, preventDefaults, false);
+    // Initialize UI
+    downloadBtn.disabled = true;
+    convertBtn.disabled = true;
+    thresholdValue.textContent = thresholdSlider.value;
+
+    // File drag & drop handlers
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
+        dropArea.addEventListener(event, preventDefaults);
     });
 
     function preventDefaults(e) {
@@ -29,237 +36,212 @@ document.addEventListener('DOMContentLoaded', function () {
         e.stopPropagation();
     }
 
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropArea.addEventListener(eventName, highlight, false);
+    ['dragenter', 'dragover'].forEach(event => {
+        dropArea.addEventListener(event, () => dropArea.classList.add('active'));
     });
 
-    ['dragleave', 'drop'].forEach(eventName => {
-        dropArea.addEventListener(eventName, unhighlight, false);
+    ['dragleave', 'drop'].forEach(event => {
+        dropArea.addEventListener(event, () => dropArea.classList.remove('active'));
     });
 
-    function highlight() {
-        dropArea.classList.add('active');
-    }
-
-    function unhighlight() {
-        dropArea.classList.remove('active');
-    }
-
-    dropArea.addEventListener('drop', handleDrop, false);
-
-    function handleDrop(e) {
-        const dt = e.dataTransfer;
-        const files = dt.files;
-
-        if (files.length > 0 && files[0].type.match('image.*')) {
-            handleFile(files[0]);
+    // Handle file drop
+    dropArea.addEventListener('drop', function(e) {
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.match('image.*')) {
+            processSelectedFile(file);
         }
-    }
+    });
 
-    // File input handler
-    fileInput.addEventListener('change', function () {
+    // Handle file selection via input
+    fileInput.addEventListener('change', function() {
         if (this.files.length > 0) {
-            handleFile(this.files[0]);
+            processSelectedFile(this.files[0]);
         }
     });
 
-    // Click on drop area should trigger file input
-    dropArea.addEventListener('click', function () {
-        fileInput.click();
-    });
+    // Click on drop area triggers file input
+    dropArea.addEventListener('click', () => fileInput.click());
 
-    // Handle the file selection
-    function handleFile(file) {
+    // Process the selected file
+    function processSelectedFile(file) {
         currentFile = file;
         convertBtn.disabled = false;
-        console.log(file.type);
-
-        // Show preview of the original image
+        
+        // Show image preview
         const reader = new FileReader();
-        reader.onload = function (e) {
+        reader.onload = function(e) {
             originalPreview.src = e.target.result;
             previewSection.style.display = 'block';
         };
         reader.readAsDataURL(file);
     }
 
-    // Update threshold value display
-    thresholdSlider.addEventListener('input', function () {
+    // Update threshold display
+    thresholdSlider.addEventListener('input', function() {
         thresholdValue.textContent = this.value;
     });
 
-    // Convert button click handler
-    convertBtn.addEventListener('click', function () {
+    // Handle convert button click
+    convertBtn.addEventListener('click', function() {
         if (!currentFile) return;
-
+        
         processingOverlay.style.display = 'flex';
-
+        
         const threshold = parseInt(thresholdSlider.value);
         const resolutionScale = parseInt(document.getElementById('resolution').value);
         const outputFormat = document.querySelector('input[name="outputFormat"]:checked').value;
-
-        // Use setTimeout to allow the UI to update before starting the intensive processing
+        
+        // Allow UI to update before starting processing
         setTimeout(() => {
-            convertImageToVector(currentFile, threshold, resolutionScale, outputFormat)
+            processImage(currentFile, threshold, resolutionScale, outputFormat)
                 .then(result => {
                     vectorOutput = result;
-
-                    // Display the result
-                    previewSection.style.display = 'block';
-                    
-                    // Enable download button
                     downloadBtn.disabled = false;
-
+                    
                     if (outputFormat === 'svg') {
                         vectorPreview.innerHTML = result;
                     } else {
-                        // For DXF, show a placeholder message
                         vectorPreview.innerHTML = '<div style="padding: 20px; background: #f8f9fa; border: 1px dashed #ccc;">' +
                             '<p>DXF preview not available. Please download the file to view it in a compatible application.</p></div>';
                     }
-
+                    
                     processingOverlay.style.display = 'none';
                 })
                 .catch(error => {
-                    console.error('Conversion error:', error);
+                    console.error('Processing error:', error);
                     alert('Error converting image: ' + error.message);
                     processingOverlay.style.display = 'none';
                 });
         }, 50);
     });
 
-    // Download button click handler
-    downloadBtn.addEventListener('click', function () {
+    // Handle download button click
+    downloadBtn.addEventListener('click', function() {
         if (!vectorOutput) return;
-
+        
         const outputFormat = document.querySelector('input[name="outputFormat"]:checked').value;
         const fileName = `converted.${outputFormat}`;
-
-        // Function to trigger download with Blob and FileSaver.js
-        function downloadBlob(blob, fileName) {
-            if (typeof saveAs === 'undefined') {
-                // Fallback if FileSaver.js is not available
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                setTimeout(() => {
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                }, 0);
-            } else {
-                saveAs(blob, fileName);
-            }
-        }
-
-        if (outputFormat === 'svg') {
-            const blob = new Blob([vectorOutput], { type: 'image/svg+xml' });
-            downloadBlob(blob, fileName);
+        
+        const blob = new Blob([vectorOutput], { 
+            type: outputFormat === 'svg' ? 'image/svg+xml' : 'application/dxf' 
+        });
+        
+        // Use FileSaver if available, otherwise fallback
+        if (typeof saveAs !== 'undefined') {
+            saveAs(blob, fileName);
         } else {
-            const blob = new Blob([vectorOutput], { type: 'application/dxf' });
-            downloadBlob(blob, fileName);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
         }
     });
 
-    // Function to convert image to vector
-    async function convertImageToVector(file, threshold, resolutionScale, outputFormat) {
+    // Main image processing function
+    async function processImage(file, threshold, resolutionScale, outputFormat) {
         return new Promise((resolve, reject) => {
             const img = new Image();
-            img.onload = function () {
+            
+            img.onload = function() {
                 try {
-                    // Create canvas to process the image
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-
-                    // Scale down the image if it's very large
-                    let width = img.width;
-                    let height = img.height;
-
-                    // Apply resolution scaling
-                    width = Math.floor(width / resolutionScale);
-                    height = Math.floor(height / resolutionScale);
-
-                    canvas.width = width;
-                    canvas.height = height;
-
-                    // Draw and process the image
-                    ctx.drawImage(img, 0, 0, width, height);
-                    const imageData = ctx.getImageData(0, 0, width, height);
-
-                    // Apply threshold to create a binary image
-                    const binaryData = new Uint8Array(width * height);
-
-                    for (let i = 0; i < imageData.data.length; i += 4) {
-                        // Convert to grayscale
-                        const r = imageData.data[i];
-                        const g = imageData.data[i + 1];
-                        const b = imageData.data[i + 2];
-                        const gray = 0.3 * r + 0.59 * g + 0.11 * b;
-
-                        // Apply threshold
-                        const pixel = Math.floor(i / 4);
-                        binaryData[pixel] = gray < threshold ? 1 : 0;
-                    }
-
-                    // Use Potrace to trace the bitmap
-                    // Set Potrace parameters
-                    const potraceParams = {
+                    // Create canvas and get binary data
+                    const { width, height, binaryData } = imageToThresholdData(img, threshold, resolutionScale);
+                    
+                    // Process with Potrace
+                    const options = {
                         turdsize: 2,
                         optcurve: true,
                         alphamax: 1,
                         opttolerance: 0.2
                     };
-
-                    // Use the Potrace API correctly - trace function with binary data
-                    const traceResult = Potrace.trace(binaryData, {
-                        ...potraceParams,
-                        width: width,
-                        height: height
-                    });
-
-                    if (outputFormat === 'svg') {
-                        // Get SVG with appropriate scaling
-                        const svgScale = 1;
-                        const svgData = traceResult.getSVG(svgScale, 'px');
-                        resolve(svgData);
-                    } else {
-                        // Convert to DXF
-                        const dxfData = convertSvgToDxf(traceResult);
-                        resolve(dxfData);
+                    
+                    // Add dimensions to options
+                    options.width = width;
+                    options.height = height;
+                    
+                    try {
+                        // Trace the image
+                        const traceResult = Potrace.trace(binaryData, options);
+                        
+                        if (outputFormat === 'svg') {
+                            const svgData = traceResult.getSVG(1, 'px');
+                            resolve(svgData);
+                        } else {
+                            const dxfData = svgToDxf(traceResult);
+                            resolve(dxfData);
+                        }
+                    } catch (traceError) {
+                        console.error('Potrace error:', traceError);
+                        reject(new Error('Failed to trace image. Potrace error: ' + traceError.message));
                     }
                 } catch (error) {
-                    console.error('Processing error:', error);
-                    reject(new Error('Failed to process image. Error: ' + error.message));
+                    reject(error);
                 }
             };
-
-            img.onerror = function () {
-                reject(new Error('Failed to load image'));
-            };
-
-            // Load the image from file
+            
+            img.onerror = () => reject(new Error('Failed to load image'));
+            
             img.src = URL.createObjectURL(file);
         });
     }
 
-    // Function to convert SVG path data to DXF
-    function convertSvgToDxf(traceResult) {
-        // This is a simplified DXF generation
+    // Convert image to binary data with threshold
+    function imageToThresholdData(img, threshold, resolutionScale) {
+        // Calculate dimensions based on resolution scale
+        const width = Math.floor(img.width / resolutionScale);
+        const height = Math.floor(img.height / resolutionScale);
+        
+        // Create canvas and draw image
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Get image data
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+        
+        // Create binary data array (1 = black, 0 = white)
+        const binaryData = new Uint8Array(width * height);
+        
+        for (let i = 0; i < data.length; i += 4) {
+            // Calculate grayscale using luminance formula
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+            
+            // Apply threshold and store in binary array
+            const pixelIndex = i / 4;
+            binaryData[pixelIndex] = gray < threshold ? 1 : 0;
+        }
+        
+        return { width, height, binaryData };
+    }
+
+    // Convert SVG to DXF
+    function svgToDxf(traceResult) {
+        // Basic DXF header
         let dxf = '0\nSECTION\n';
         dxf += '2\nHEADER\n';
         dxf += '0\nENDSEC\n';
         dxf += '0\nSECTION\n';
         dxf += '2\nENTITIES\n';
-
+        
         try {
-            // Get all paths from the trace result
+            // Get paths from trace result
             const paths = traceResult.getPaths();
             
             // Process each path
             paths.forEach(path => {
-                // For each curve in the path
                 path.curves.forEach(curve => {
                     if (curve.type === 'line') {
                         // Add line entity
@@ -270,29 +252,29 @@ document.addEventListener('DOMContentLoaded', function () {
                         dxf += `11\n${curve.x2}\n`; // End X
                         dxf += `21\n${curve.y2}\n`; // End Y
                     } else if (curve.type === 'bezier') {
-                        // Approximate bezier with polyline
+                        // Add polyline entity to approximate bezier
                         dxf += '0\nPOLYLINE\n';
                         dxf += '8\n0\n'; // Layer 0
                         dxf += '66\n1\n'; // Vertices follow
-
-                        // Approximate the bezier curve with points
+                        
+                        // Approximate bezier with multiple points
                         const steps = 10;
                         for (let i = 0; i <= steps; i++) {
                             const t = i / steps;
                             const point = getBezierPoint(
-                                { x: curve.x1, y: curve.y1 },
-                                { x: curve.x2, y: curve.y2 },
-                                { x: curve.x3, y: curve.y3 },
-                                { x: curve.x4, y: curve.y4 },
+                                curve.x1, curve.y1,
+                                curve.x2, curve.y2,
+                                curve.x3, curve.y3,
+                                curve.x4, curve.y4,
                                 t
                             );
-
+                            
                             dxf += '0\nVERTEX\n';
                             dxf += '8\n0\n';
                             dxf += `10\n${point.x}\n`;
                             dxf += `20\n${point.y}\n`;
                         }
-
+                        
                         dxf += '0\nSEQEND\n';
                     }
                 });
@@ -300,27 +282,27 @@ document.addEventListener('DOMContentLoaded', function () {
         } catch (error) {
             console.error('DXF conversion error:', error);
         }
-
+        
+        // DXF footer
         dxf += '0\nENDSEC\n';
         dxf += '0\nEOF\n';
-
+        
         return dxf;
     }
 
-    // Function to get a point on a cubic bezier curve
-    function getBezierPoint(p0, p1, p2, p3, t) {
-        const x =
-            Math.pow(1 - t, 3) * p0.x +
-            3 * Math.pow(1 - t, 2) * t * p1.x +
-            3 * (1 - t) * Math.pow(t, 2) * p2.x +
-            Math.pow(t, 3) * p3.x;
-
-        const y =
-            Math.pow(1 - t, 3) * p0.y +
-            3 * Math.pow(1 - t, 2) * t * p1.y +
-            3 * (1 - t) * Math.pow(t, 2) * p2.y +
-            Math.pow(t, 3) * p3.y;
-
+    // Calculate point on cubic bezier curve
+    function getBezierPoint(x1, y1, x2, y2, x3, y3, x4, y4, t) {
+        // Cubic Bezier formula
+        const x = Math.pow(1-t, 3) * x1 + 
+                 3 * Math.pow(1-t, 2) * t * x2 + 
+                 3 * (1-t) * Math.pow(t, 2) * x3 + 
+                 Math.pow(t, 3) * x4;
+                 
+        const y = Math.pow(1-t, 3) * y1 + 
+                 3 * Math.pow(1-t, 2) * t * y2 + 
+                 3 * (1-t) * Math.pow(t, 2) * y3 + 
+                 Math.pow(t, 3) * y4;
+                 
         return { x, y };
     }
 });
