@@ -18,7 +18,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // Check if required libraries are loaded
     if (typeof Potrace === 'undefined') {
         console.error('Potrace library is not loaded');
-        alert('Error: Potrace library is missing. Please include it in your HTML.');
+        alert('Error: Potrace library is missing. Please check your script includes.');
+        return;
     }
 
     // Initialize UI
@@ -150,37 +151,62 @@ document.addEventListener('DOMContentLoaded', function () {
             
             img.onload = function() {
                 try {
-                    // Create canvas and get binary data
-                    const { width, height, binaryData } = imageToThresholdData(img, threshold, resolutionScale);
+                    console.log("Image loaded, processing...");
                     
-                    // Process with Potrace
-                    const options = {
+                    // Create a canvas for processing
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Scale dimensions based on resolution setting
+                    const width = Math.floor(img.width / resolutionScale);
+                    const height = Math.floor(img.height / resolutionScale);
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    
+                    // Draw image to canvas with scaling
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    // Get image data
+                    const imageData = ctx.getImageData(0, 0, width, height);
+                    const data = imageData.data;
+                    
+                    // Create binary data for Potrace (1 = black, 0 = white)
+                    const binaryData = new Uint8Array(width * height);
+                    
+                    for (let i = 0; i < data.length; i += 4) {
+                        // Calculate grayscale using luminance formula
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                        
+                        // Apply threshold
+                        const pixelIndex = i / 4;
+                        binaryData[pixelIndex] = gray < threshold ? 1 : 0;
+                    }
+                    
+                    // Set Potrace parameters
+                    Potrace.setParameter({
                         turdsize: 2,
                         optcurve: true,
                         alphamax: 1,
                         opttolerance: 0.2
+                    });
+                    
+                    // Create Bitmap for Potrace
+                    const potraceInput = {
+                        data: binaryData,
+                        width: width,
+                        height: height
                     };
                     
-                    // Add dimensions to options
-                    options.width = width;
-                    options.height = height;
+                    // Trace the image
+                    const result = trace(potraceInput, outputFormat);
+                    resolve(result);
                     
-                    try {
-                        // Trace the image
-                        const traceResult = Potrace.trace(binaryData, options);
-                        
-                        if (outputFormat === 'svg') {
-                            const svgData = traceResult.getSVG(1, 'px');
-                            resolve(svgData);
-                        } else {
-                            const dxfData = svgToDxf(traceResult);
-                            resolve(dxfData);
-                        }
-                    } catch (traceError) {
-                        console.error('Potrace error:', traceError);
-                        reject(new Error('Failed to trace image. Potrace error: ' + traceError.message));
-                    }
                 } catch (error) {
+                    console.error("Processing error:", error);
                     reject(error);
                 }
             };
@@ -190,97 +216,76 @@ document.addEventListener('DOMContentLoaded', function () {
             img.src = URL.createObjectURL(file);
         });
     }
-
-    // Convert image to binary data with threshold
-    function imageToThresholdData(img, threshold, resolutionScale) {
-        // Calculate dimensions based on resolution scale
-        const width = Math.floor(img.width / resolutionScale);
-        const height = Math.floor(img.height / resolutionScale);
+    
+    // Function to trace the image using Potrace
+    function trace(imgData, outputFormat) {
+        // Create a Potrace bitmap
+        const bm = new Potrace.Bitmap(imgData.width, imgData.height);
         
-        // Create canvas and draw image
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        // Get image data
-        const imageData = ctx.getImageData(0, 0, width, height);
-        const data = imageData.data;
-        
-        // Create binary data array (1 = black, 0 = white)
-        const binaryData = new Uint8Array(width * height);
-        
-        for (let i = 0; i < data.length; i += 4) {
-            // Calculate grayscale using luminance formula
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-            
-            // Apply threshold and store in binary array
-            const pixelIndex = i / 4;
-            binaryData[pixelIndex] = gray < threshold ? 1 : 0;
+        // Copy the binary data to the bitmap
+        for (let i = 0; i < imgData.data.length; i++) {
+            bm.data[i] = imgData.data[i];
         }
         
-        return { width, height, binaryData };
+        // Trace the bitmap
+        Potrace.process(function(){});
+        
+        // Get the SVG output
+        const svgData = Potrace.getSVG(1, 'px');
+        
+        if (outputFormat === 'svg') {
+            return svgData;
+        } else {
+            // Convert SVG to DXF (simplified implementation)
+            return svgToDxf(svgData);
+        }
     }
 
-    // Convert SVG to DXF
-    function svgToDxf(traceResult) {
-        // Basic DXF header
+    // Convert SVG to DXF (simplified implementation)
+    function svgToDxf(svgData) {
+        // This is a very simplified DXF conversion
+        // In a real application, you'd need a proper SVG parser
+        
         let dxf = '0\nSECTION\n';
         dxf += '2\nHEADER\n';
         dxf += '0\nENDSEC\n';
         dxf += '0\nSECTION\n';
         dxf += '2\nENTITIES\n';
         
-        try {
-            // Get paths from trace result
-            const paths = traceResult.getPaths();
+        // Extract path data from SVG (simplified)
+        const pathMatch = svgData.match(/<path d="([^"]+)"/);
+        if (pathMatch && pathMatch[1]) {
+            const pathData = pathMatch[1];
+            const commands = pathData.match(/[MLCZm][^MLCZm]*/g) || [];
             
-            // Process each path
-            paths.forEach(path => {
-                path.curves.forEach(curve => {
-                    if (curve.type === 'line') {
-                        // Add line entity
+            for (let cmd of commands) {
+                const type = cmd[0];
+                const coords = cmd.substring(1).trim().split(/[\s,]+/).map(parseFloat);
+                
+                if (type === 'M' || type === 'm') {
+                    // Move command - skip in DXF
+                } else if (type === 'L') {
+                    // Line command
+                    if (coords.length >= 2) {
                         dxf += '0\nLINE\n';
                         dxf += '8\n0\n'; // Layer 0
-                        dxf += `10\n${curve.x1}\n`; // Start X
-                        dxf += `20\n${curve.y1}\n`; // Start Y
-                        dxf += `11\n${curve.x2}\n`; // End X
-                        dxf += `21\n${curve.y2}\n`; // End Y
-                    } else if (curve.type === 'bezier') {
-                        // Add polyline entity to approximate bezier
-                        dxf += '0\nPOLYLINE\n';
-                        dxf += '8\n0\n'; // Layer 0
-                        dxf += '66\n1\n'; // Vertices follow
-                        
-                        // Approximate bezier with multiple points
-                        const steps = 10;
-                        for (let i = 0; i <= steps; i++) {
-                            const t = i / steps;
-                            const point = getBezierPoint(
-                                curve.x1, curve.y1,
-                                curve.x2, curve.y2,
-                                curve.x3, curve.y3,
-                                curve.x4, curve.y4,
-                                t
-                            );
-                            
-                            dxf += '0\nVERTEX\n';
-                            dxf += '8\n0\n';
-                            dxf += `10\n${point.x}\n`;
-                            dxf += `20\n${point.y}\n`;
-                        }
-                        
-                        dxf += '0\nSEQEND\n';
+                        dxf += `10\n${coords[0]}\n`; // Start X
+                        dxf += `20\n${coords[1]}\n`; // Start Y
+                        dxf += `11\n${coords[0]}\n`; // End X (simplified)
+                        dxf += `21\n${coords[1]}\n`; // End Y (simplified)
                     }
-                });
-            });
-        } catch (error) {
-            console.error('DXF conversion error:', error);
+                } else if (type === 'C') {
+                    // Bezier curve - approximate with line in this simplified version
+                    if (coords.length >= 6) {
+                        dxf += '0\nLINE\n';
+                        dxf += '8\n0\n';
+                        dxf += `10\n${coords[0]}\n`;
+                        dxf += `20\n${coords[1]}\n`;
+                        dxf += `11\n${coords[4]}\n`;
+                        dxf += `21\n${coords[5]}\n`;
+                    }
+                }
+            }
         }
         
         // DXF footer
@@ -289,20 +294,5 @@ document.addEventListener('DOMContentLoaded', function () {
         
         return dxf;
     }
-
-    // Calculate point on cubic bezier curve
-    function getBezierPoint(x1, y1, x2, y2, x3, y3, x4, y4, t) {
-        // Cubic Bezier formula
-        const x = Math.pow(1-t, 3) * x1 + 
-                 3 * Math.pow(1-t, 2) * t * x2 + 
-                 3 * (1-t) * Math.pow(t, 2) * x3 + 
-                 Math.pow(t, 3) * x4;
-                 
-        const y = Math.pow(1-t, 3) * y1 + 
-                 3 * Math.pow(1-t, 2) * t * y2 + 
-                 3 * (1-t) * Math.pow(t, 2) * y3 + 
-                 Math.pow(t, 3) * y4;
-                 
-        return { x, y };
-    }
 });
+```
