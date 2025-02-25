@@ -45,15 +45,15 @@ document.addEventListener('DOMContentLoaded', function () {
         const dt = e.dataTransfer;
         const files = dt.files;
 
-        if (files.length > 0 && files.type.match('image.*')) {
-            handleFile(files);
+        if (files.length > 0 && files[0].type.match('image.*')) {
+            handleFile(files[0]);
         }
     }
 
     // File input handler
     fileInput.addEventListener('change', function () {
         if (this.files.length > 0) {
-            handleFile(this.files);
+            handleFile(this.files[0]);
         }
     });
 
@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function handleFile(file) {
         currentFile = file;
         convertBtn.disabled = false;
-        console.log(files.type)
+        console.log(file.type);
 
         // Show preview of the original image
         const reader = new FileReader();
@@ -99,6 +99,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     // Display the result
                     previewSection.style.display = 'block';
+                    
+                    // Enable download button
+                    downloadBtn.disabled = false;
 
                     if (outputFormat === 'svg') {
                         vectorPreview.innerHTML = result;
@@ -117,15 +120,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         }, 50);
     });
-
-    // Download button click handler
     downloadBtn.addEventListener('click', function () {
         if (!vectorOutput) return;
 
         const outputFormat = document.querySelector('input[name="outputFormat"]:checked').value;
         const fileName = `converted.${outputFormat}`;
 
-        // Function to trigger download with Blob and FileSaver.js
         function downloadBlob(blob, fileName) {
             saveAs(blob, fileName);
         }
@@ -139,31 +139,25 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Function to convert image to vector
     async function convertImageToVector(file, threshold, resolutionScale, outputFormat) {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = function () {
-                // Create canvas to process the image
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
 
-                // Scale down the image if it's very large
                 let width = img.width;
                 let height = img.height;
 
-                // Apply resolution scaling
                 width = Math.floor(width / resolutionScale);
                 height = Math.floor(height / resolutionScale);
 
                 canvas.width = width;
                 canvas.height = height;
 
-                // Draw and process the image
                 ctx.drawImage(img, 0, 0, width, height);
                 const imageData = ctx.getImageData(0, 0, width, height);
 
-                // Apply threshold to create a binary image
                 const binaryData = new Uint8Array(width * height);
 
                 for (let i = 0; i < imageData.data.length; i += 4) {
@@ -175,7 +169,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     // Apply threshold
                     const pixel = Math.floor(i / 4);
-                    binaryData[pixel] = gray < threshold? 1: 0;
+                    binaryData[pixel] = gray < threshold ? 1 : 0;
                 }
 
                 try {
@@ -208,15 +202,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 reject(new Error('Failed to load image'));
             };
 
-            // Load the image from file
             img.src = URL.createObjectURL(file);
         });
     }
 
-    // Function to convert SVG path data to DXF
     function convertSvgToDxf(traceResult) {
-        // This is a simplified DXF generation
-        // In a real app, you'd want a more robust SVG to DXF converter
 
         let dxf = '0\nSECTION\n';
         dxf += '2\nHEADER\n';
