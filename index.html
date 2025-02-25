@@ -5,12 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Raster to Vector Converter for LaserGRBL</title>
     <link rel="stylesheet" href="css/style.css">
+    <!-- Required libraries - consolidated -->
     <script src="lib/potrace.js"></script>
-    <!-- Required libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/potrace/1.0.0/potrace.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="lib/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/potrace/1.0.0/potrace.min.js"></script>
     <script src="lib/FileSaver.min.js"></script>
 </head>
 <body>
@@ -33,16 +30,16 @@
         <div class="settings-section">
             <h2>Conversion Settings</h2>
             <div class="setting-group">
-                <label for="threshold">Threshold:</label>
+                <label for="threshold">Threshold: <span id="thresholdValue">128</span></label>
                 <input type="range" id="threshold" min="0" max="255" value="128" class="slider">
-                <span id="thresholdValue">128</span>
             </div>
             <div class="setting-group">
                 <label for="resolution">Resolution:</label>
                 <select id="resolution">
-                    <option value="1">High (slow)</option>
-                    <option value="2" selected>Medium</option>
-                    <option value="4">Low (fast)</option>
+                    <option value="1">Original (slow)</option>
+                    <option value="2">1/2 (medium)</option>
+                    <option value="4" selected>1/4 (fast)</option>
+                    <option value="8">1/8 (fastest)</option>
                 </select>
             </div>
             <div class="setting-group">
@@ -59,6 +56,7 @@
                 </div>
             </div>
             <button id="convertBtn" disabled>Convert Image</button>
+            <button id="downloadBtn" disabled>Download Vector File</button>
         </div>
         
         <div class="preview-section" style="display: none;">
@@ -72,12 +70,9 @@
                     <div id="vectorPreview"></div>
                 </div>
             </div>
-            <div class="download-area">
-                <button id="downloadBtn">Download Vector File</button>
-            </div>
         </div>
         
-        <div class="processing-overlay" id="processingOverlay">
+        <div class="processing-overlay" id="processingOverlay" style="display: none;">
             <div class="processing-content">
                 <div class="spinner"></div>
                 <p>Processing Image...</p>
