@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function handleFile(file) {
         currentFile = file;
         convertBtn.disabled = false;
-        console.log(file.type);
+        console.log(file.type);  // Fixed: using file.type instead of files.type
 
         // Show preview of the original image
         const reader = new FileReader();
@@ -120,12 +120,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         }, 50);
     });
+
+    // Download button click handler
     downloadBtn.addEventListener('click', function () {
         if (!vectorOutput) return;
 
         const outputFormat = document.querySelector('input[name="outputFormat"]:checked').value;
         const fileName = `converted.${outputFormat}`;
 
+        // Function to trigger download with Blob and FileSaver.js
         function downloadBlob(blob, fileName) {
             saveAs(blob, fileName);
         }
@@ -139,25 +142,31 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    // Function to convert image to vector
     async function convertImageToVector(file, threshold, resolutionScale, outputFormat) {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = function () {
+                // Create canvas to process the image
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
 
+                // Scale down the image if it's very large
                 let width = img.width;
                 let height = img.height;
 
+                // Apply resolution scaling
                 width = Math.floor(width / resolutionScale);
                 height = Math.floor(height / resolutionScale);
 
                 canvas.width = width;
                 canvas.height = height;
 
+                // Draw and process the image
                 ctx.drawImage(img, 0, 0, width, height);
                 const imageData = ctx.getImageData(0, 0, width, height);
 
+                // Apply threshold to create a binary image
                 const binaryData = new Uint8Array(width * height);
 
                 for (let i = 0; i < imageData.data.length; i += 4) {
@@ -202,11 +211,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 reject(new Error('Failed to load image'));
             };
 
+            // Load the image from file
             img.src = URL.createObjectURL(file);
         });
     }
 
+    // Function to convert SVG path data to DXF
     function convertSvgToDxf(traceResult) {
+        // This is a simplified DXF generation
+        // In a real app, you'd want a more robust SVG to DXF converter
 
         let dxf = '0\nSECTION\n';
         dxf += '2\nHEADER\n';
