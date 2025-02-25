@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         binaryData[pixelIndex] = gray < threshold ? 1 : 0;
                     }
                     
-                    // Set Potrace parameters
+                    // Use the correct Potrace API
                     Potrace.setParameter({
                         turdsize: 2,
                         optcurve: true,
@@ -194,16 +194,23 @@ document.addEventListener('DOMContentLoaded', function () {
                         opttolerance: 0.2
                     });
                     
-                    // Create Bitmap for Potrace
-                    const potraceInput = {
-                        data: binaryData,
-                        width: width,
-                        height: height
-                    };
+                    // Load binary data directly into Potrace
+                    // Note: We're using a different approach that matches Potrace's API
+                    Potrace.loadImageFromData(binaryData, width, height);
                     
-                    // Trace the image
-                    const result = trace(potraceInput, outputFormat);
-                    resolve(result);
+                    // Process the image with Potrace
+                    Potrace.process(function() {
+                        // Get the SVG output
+                        const svgData = Potrace.getSVG(1, 'px');
+                        
+                        if (outputFormat === 'svg') {
+                            resolve(svgData);
+                        } else {
+                            // Convert SVG to DXF
+                            const dxfData = svgToDxf(svgData);
+                            resolve(dxfData);
+                        }
+                    });
                     
                 } catch (error) {
                     console.error("Processing error:", error);
@@ -216,35 +223,40 @@ document.addEventListener('DOMContentLoaded', function () {
             img.src = URL.createObjectURL(file);
         });
     }
-    
-    // Function to trace the image using Potrace
-    function trace(imgData, outputFormat) {
-        // Create a Potrace bitmap
-        const bm = new Potrace.Bitmap(imgData.width, imgData.height);
-        
-        // Copy the binary data to the bitmap
-        for (let i = 0; i < imgData.data.length; i++) {
-            bm.data[i] = imgData.data[i];
-        }
-        
-        // Trace the bitmap
-        Potrace.process(function(){});
-        
-        // Get the SVG output
-        const svgData = Potrace.getSVG(1, 'px');
-        
-        if (outputFormat === 'svg') {
-            return svgData;
-        } else {
-            // Convert SVG to DXF (simplified implementation)
-            return svgToDxf(svgData);
-        }
+
+    // Custom function to load binary data into Potrace
+    // Add this to the Potrace library if it doesn't have loadImageFromData
+    if (!Potrace.loadImageFromData) {
+        Potrace.loadImageFromData = function(binaryData, width, height) {
+            // Create a temporary canvas to hold the binary data
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            
+            // Create an ImageData object
+            const imageData = ctx.createImageData(width, height);
+            
+            // Set the pixel data
+            for (let i = 0; i < binaryData.length; i++) {
+                const value = binaryData[i] ? 0 : 255; // Invert: 1=black, 0=white
+                imageData.data[i * 4] = value;     // R
+                imageData.data[i * 4 + 1] = value; // G
+                imageData.data[i * 4 + 2] = value; // B
+                imageData.data[i * 4 + 3] = 255;   // A (fully opaque)
+            }
+            
+            // Put the image data on the canvas
+            ctx.putImageData(imageData, 0, 0);
+            
+            // Load the canvas as an image into Potrace
+            this.loadImageFromUrl(canvas.toDataURL());
+        };
     }
 
     // Convert SVG to DXF (simplified implementation)
     function svgToDxf(svgData) {
         // This is a very simplified DXF conversion
-        // In a real application, you'd need a proper SVG parser
         
         let dxf = '0\nSECTION\n';
         dxf += '2\nHEADER\n';
