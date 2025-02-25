@@ -66,6 +66,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function handleFile(file) {
         currentFile = file;
         convertBtn.disabled = false;
+        console.log(files.type)
 
         // Show preview of the original image
         const reader = new FileReader();
