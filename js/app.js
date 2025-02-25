@@ -203,34 +203,35 @@ document.addEventListener('DOMContentLoaded', function () {
                         binaryData[pixel] = gray < threshold ? 1 : 0;
                     }
 
-                    // Create a new Potrace instance
-                    const potrace = new Potrace();
-                    
-                    // Set options
-                    potrace.setParameters({
+                    // Use Potrace to trace the bitmap
+                    // Set Potrace parameters
+                    const potraceParams = {
                         turdsize: 2,
                         optcurve: true,
                         alphamax: 1,
                         opttolerance: 0.2
-                    });
+                    };
 
-                    // Process the image data
-                    potrace.loadImageFromBinary(binaryData, width, height);
-                    potrace.process();
+                    // Use the Potrace API correctly - trace function with binary data
+                    const traceResult = Potrace.trace(binaryData, {
+                        ...potraceParams,
+                        width: width,
+                        height: height
+                    });
 
                     if (outputFormat === 'svg') {
                         // Get SVG with appropriate scaling
                         const svgScale = 1;
-                        const svgData = potrace.getSVG(svgScale, 'px');
+                        const svgData = traceResult.getSVG(svgScale, 'px');
                         resolve(svgData);
                     } else {
                         // Convert to DXF
-                        const dxfData = convertSvgToDxf(potrace);
+                        const dxfData = convertSvgToDxf(traceResult);
                         resolve(dxfData);
                     }
                 } catch (error) {
                     console.error('Processing error:', error);
-                    reject(new Error('Failed to process image. Make sure Potrace library is properly loaded.'));
+                    reject(new Error('Failed to process image. Error: ' + error.message));
                 }
             };
 
@@ -244,7 +245,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Function to convert SVG path data to DXF
-    function convertSvgToDxf(potraceResult) {
+    function convertSvgToDxf(traceResult) {
         // This is a simplified DXF generation
         let dxf = '0\nSECTION\n';
         dxf += '2\nHEADER\n';
@@ -253,91 +254,49 @@ document.addEventListener('DOMContentLoaded', function () {
         dxf += '2\nENTITIES\n';
 
         try {
-            // Get path data from potrace result
-            const pathData = potraceResult.getPathTag();
+            // Get all paths from the trace result
+            const paths = traceResult.getPaths();
             
-            // Extract d attribute from the path tag
-            const dMatch = pathData.match(/d="([^"]*)"/);
-            if (dMatch && dMatch[1]) {
-                const pathCommands = dMatch[1].trim().split(/(?=[MLHVCSQTAZmlhvcsqtaz])/);
-                
-                let currentX = 0;
-                let currentY = 0;
-                
-                for (let i = 0; i < pathCommands.length; i++) {
-                    const cmd = pathCommands[i];
-                    const type = cmd[0];
-                    const points = cmd.slice(1).trim().split(/[\s,]+/).map(parseFloat);
-                    
-                    switch (type) {
-                        case 'M': // Move to
-                            currentX = points[0];
-                            currentY = points[1];
-                            break;
-                            
-                        case 'L': // Line to
-                            dxf += '0\nLINE\n';
-                            dxf += '8\n0\n'; // Layer 0
-                            dxf += `10\n${currentX}\n`; // Start X
-                            dxf += `20\n${currentY}\n`; // Start Y
-                            dxf += `11\n${points[0]}\n`; // End X
-                            dxf += `21\n${points[1]}\n`; // End Y
-                            
-                            currentX = points[0];
-                            currentY = points[1];
-                            break;
-                            
-                        case 'Z': // Close path
-                            // No need to add anything for DXF
-                            break;
-                            
-                        // Simplified handling - convert curves to polylines
-                        case 'C': // Cubic bezier
-                            if (points.length >= 6) {
-                                dxf += '0\nPOLYLINE\n';
-                                dxf += '8\n0\n'; // Layer 0
-                                dxf += '66\n1\n'; // Vertices follow
-                                
-                                // Start vertex
-                                dxf += '0\nVERTEX\n';
-                                dxf += '8\n0\n';
-                                dxf += `10\n${currentX}\n`;
-                                dxf += `20\n${currentY}\n`;
-                                
-                                // Approximate the bezier curve with points
-                                const steps = 10;
-                                for (let j = 1; j <= steps; j++) {
-                                    const t = j / steps;
-                                    const x = bezierPoint(
-                                        currentX, 
-                                        points[0], 
-                                        points[2], 
-                                        points[4], 
-                                        t
-                                    );
-                                    const y = bezierPoint(
-                                        currentY, 
-                                        points[1], 
-                                        points[3], 
-                                        points[5], 
-                                        t
-                                    );
-                                    
-                                    dxf += '0\nVERTEX\n';
-                                    dxf += '8\n0\n';
-                                    dxf += `10\n${x}\n`;
-                                    dxf += `20\n${y}\n`;
-                                }
-                                
-                                dxf += '0\nSEQEND\n';
-                                
-                                currentX = points[4];
-                                currentY = points[5];
-                            }
-                            break;
+            // Process each path
+            paths.forEach(path => {
+                // For each curve in the path
+                path.curves.forEach(curve => {
+                    if (curve.type === 'line') {
+                        // Add line entity
+                        dxf += '0\nLINE\n';
+                        dxf += '8\n0\n'; // Layer 0
+                        dxf += `10\n${curve.x1}\n`; // Start X
+                        dxf += `20\n${curve.y1}\n`; // Start Y
+                        dxf += `11\n${curve.x2}\n`; // End X
+                        dxf += `21\n${curve.y2}\n`; // End Y
+                    } else if (curve.type === 'bezier') {
+                        // Approximate bezier with polyline
+                        dxf += '0\nPOLYLINE\n';
+                        dxf += '8\n0\n'; // Layer 0
+                        dxf += '66\n1\n'; // Vertices follow
+
+                        // Approximate the bezier curve with points
+                        const steps = 10;
+                        for (let i = 0; i <= steps; i++) {
+                            const t = i / steps;
+                            const point = getBezierPoint(
+                                { x: curve.x1, y: curve.y1 },
+                                { x: curve.x2, y: curve.y2 },
+                                { x: curve.x3, y: curve.y3 },
+                                { x: curve.x4, y: curve.y4 },
+                                t
+                            );
+
+                            dxf += '0\nVERTEX\n';
+                            dxf += '8\n0\n';
+                            dxf += `10\n${point.x}\n`;
+                            dxf += `20\n${point.y}\n`;
+                        }
+
+                        dxf += '0\nSEQEND\n';
                     }
-                }
-            }
+                });
+            });
         } catch (error) {
             console.error('DXF conversion error:', error);
         }
@@ -348,11 +307,20 @@ document.addEventListener('DOMContentLoaded', function () {
         return dxf;
     }
 
-    // Function to calculate a point on a cubic bezier curve
-    function bezierPoint(p0, p1, p2, p3, t) {
-        return (1-t)*(1-t)*(1-t)*p0 + 
-               3*(1-t)*(1-t)*t*p1 + 
-               3*(1-t)*t*t*p2 + 
-               t*t*t*p3;
+    // Function to get a point on a cubic bezier curve
+    function getBezierPoint(p0, p1, p2, p3, t) {
+        const x =
+            Math.pow(1 - t, 3) * p0.x +
+            3 * Math.pow(1 - t, 2) * t * p1.x +
+            3 * (1 - t) * Math.pow(t, 2) * p2.x +
+            Math.pow(t, 3) * p3.x;
+
+        const y =
+            Math.pow(1 - t, 3) * p0.y +
+            3 * Math.pow(1 - t, 2) * t * p1.y +
+            3 * (1 - t) * Math.pow(t, 2) * p2.y +
+            Math.pow(t, 3) * p3.y;
+
+        return { x, y };
     }
 });
