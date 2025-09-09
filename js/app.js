@@ -249,7 +249,7 @@ document.addEventListener('DOMContentLoaded', function () {
             // Put the image data on the canvas
             ctx.putImageData(imageData, 0, 0);
             
-            // Load the canvas as an image into Potrace
+            // Load the a an image into Potrace
             this.loadImageFromUrl(canvas.toDataURL());
         };
     }
@@ -306,4 +306,76 @@ document.addEventListener('DOMContentLoaded', function () {
         
         return dxf;
     }
+
+    // --- Backend Communication ---
+
+    const backendUrl = 'http://127.0.0.1:5000';
+
+    async function connectToLaser() {
+        try {
+            const response = await fetch(`${backendUrl}/api/connect`, { method: 'POST' });
+            const result = await response.json();
+            alert(result.message);
+        } catch (error) {
+            console.error('Connection error:', error);
+            alert('Failed to connect to the backend.');
+        }
+    }
+
+    async function sendVectorDataToBackend(vectorData) {
+        if (!vectorData) {
+            alert('No vector data to send.');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${backendUrl}/api/send_vector_data`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vector_data: vectorData })
+            });
+            const result = await response.json();
+            alert(result.message);
+        } catch (error) {
+            console.error('Error sending vector data:', error);
+            alert('Failed to send vector data to the backend.');
+        }
+    }
+
+    // Example of how you might call this
+    // This needs to be triggered by a new "Send to Laser" button
+    document.getElementById('sendToLaserBtn').addEventListener('click', function() {
+        if (vectorOutput) {
+            sendVectorDataToBackend(vectorOutput);
+        } else {
+            alert('Please convert an image first.');
+        }
+    });
+
+    async function startJob() {
+        try {
+            const response = await fetch(`${backendUrl}/api/start_job`, { method: 'POST' });
+            const result = await response.json();
+            alert(result.message);
+        } catch (error) {
+            console.error('Start job error:', error);
+            alert('Failed to start the job.');
+        }
+    }
+
+    async function stopJob() {
+        try {
+            const response = await fetch(`${backendUrl}/api/stop_job`, { method: 'POST' });
+            const result = await response.json();
+            alert(result.message);
+        } catch (error) {
+            console.error('Stop job error:', error);
+            alert('Failed to stop the job.');
+        }
+    }
+
+    // We can add a connect button to the UI to test the connection
+    document.getElementById('connectLaserBtn').addEventListener('click', connectToLaser);
+    document.getElementById('startJobBtn').addEventListener('click', startJob);
+    document.getElementById('stopJobBtn').addEventListener('click', stopJob);
 });
